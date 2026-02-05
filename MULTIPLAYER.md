@@ -17,7 +17,7 @@ git commit -m "Initial commit - PixelWar game"
 
 Tạo repo mới trên GitHub và push code:
 ```bash
-git remote add origin https://github.com/YOUR_USERNAME/pixel-war.git
+git remote add origin https://github.com/HandQ2212/pixel-war.git
 git branch -M main
 git push -u origin main
 ```

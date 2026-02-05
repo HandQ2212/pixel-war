@@ -1,4 +1,4 @@
-import { SuiClient } from '@mysten/sui/client'
+import { SuiClient, SuiEvent } from '@mysten/sui/client'
 import { Transaction } from '@mysten/sui/transactions'
 
 export interface PixelWarConfig {
@@ -207,7 +207,7 @@ export class PixelWarSDK {
           module: 'pixel_war',
         },
       },
-      onMessage: (event) => {
+      onMessage: (event: SuiEvent) => {
         const eventType = event.type.split('::').pop()
         if (!eventTypes || eventTypes.includes(eventType || '')) {
           onEvent(event)

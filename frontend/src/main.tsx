@@ -8,8 +8,12 @@ import App from './App'
 import './index.css'
 
 const queryClient = new QueryClient()
+
+// Use official Sui RPC endpoints
 const networks = {
-  testnet: { url: getFullnodeUrl('testnet') },
+  testnet: { 
+    url: getFullnodeUrl('testnet'),
+  },
   devnet: { url: getFullnodeUrl('devnet') },
   mainnet: { url: getFullnodeUrl('mainnet') },
 }
