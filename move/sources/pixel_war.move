@@ -11,12 +11,12 @@ module pixel_war::pixel_war {
     // ====== Constants ======
     const CANVAS_WIDTH: u32 = 50;
     const CANVAS_HEIGHT: u32 = 50;
-    const MIN_STAKE: u64 = 100_000_000; // 0.1 SUI
+    const MIN_STAKE: u64 = 10_000_000; // 0.01 SUI
     const GAME_DURATION_MS: u64 = 600_000; // 10 minutes
     
-    const POWERUP_SPEED_COST: u64 = 50_000_000; // 0.05 SUI
-    const POWERUP_BOMB_COST: u64 = 100_000_000; // 0.1 SUI
-    const POWERUP_SHIELD_COST: u64 = 150_000_000; // 0.15 SUI
+    const POWERUP_SPEED_COST: u64 = 5_000_000; // 0.005 SUI
+    const POWERUP_BOMB_COST: u64 = 10_000_000; // 0.01 SUI
+    const POWERUP_SHIELD_COST: u64 = 15_000_000; // 0.015 SUI
 
     // ====== Error Codes ======
     const EGameNotActive: u64 = 1;
@@ -507,20 +507,43 @@ module pixel_war::pixel_war {
             0 // Tie - both teams win
         };
 
-        // Calculate reward
+        // Check if player is in winning team
+        let is_winner = winner_team == 0 || player_info.team == winner_team;
+        
+        player_info.has_claimed = true;
+
+        // Calculate and distribute reward
         let mut reward_amount = 0u64;
-        if (winner_team == 0 || player_info.team == winner_team) {
+        if (is_winner) {
             let total_pool = balance::value(&game.prize_pool);
-            // Simple proportional distribution based on pixels painted
-            // In real game, use more sophisticated algorithm
-            if (player_info.pixels_painted > 0) {
-                let player_contribution = ((player_info.pixels_painted as u64) * 1000000) / 
-                    ((game.red_team_pixels + game.blue_team_pixels) as u64);
-                reward_amount = (total_pool * player_contribution) / 1000000;
+            
+            if (total_pool > 0 && game.total_players > 0) {
+                // Strategy: Distribute proportionally based on contribution within winning team
+                // Get winning team's total pixels
+                let winning_team_pixels = if (winner_team == TEAM_RED) {
+                    game.red_team_pixels
+                } else if (winner_team == TEAM_BLUE) {
+                    game.blue_team_pixels
+                } else {
+                    // Tie case: use total pixels
+                    game.red_team_pixels + game.blue_team_pixels
+                };
+
+                if (winning_team_pixels > 0 && player_info.pixels_painted > 0) {
+                    // Calculate player's contribution percentage (multiply by 10000 for precision)
+                    let player_contribution = ((player_info.pixels_painted as u64) * 10000) / (winning_team_pixels as u64);
+                    
+                    // Calculate reward amount based on contribution
+                    reward_amount = (total_pool * player_contribution) / 10000;
+                    
+                    // Ensure we don't exceed available pool (rounding protection)
+                    let available_pool = balance::value(&game.prize_pool);
+                    if (reward_amount > available_pool) {
+                        reward_amount = available_pool;
+                    };
+                };
             };
         };
-
-        player_info.has_claimed = true;
 
         if (reward_amount > 0) {
             let reward_balance = balance::split(&mut game.prize_pool, reward_amount);

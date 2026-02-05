@@ -7,7 +7,7 @@ import './App.css'
 // Set MOCK_MODE = true to test UI without deployment
 const MOCK_MODE = false
 const PACKAGE_ID = '0xa4887ed1309c8d82b6be1d0052d564d9cba7d33889cf637837bc5693f5f0e9b0'
-let GAME_ID = '0x8b09c6a4ca9ad8e32550e265b581f7a2159ab0675659884fd911702612ddc24e' // Will be updated automatically
+let GAME_ID = '0x96f401fa0ab3802195a15d386c222b7751d3e90298495a80be09ba788030a5e7' // Will be updated automatically
 const ADMIN_CAP_ID = '0x8fd0283fee52aba4a6c34d5cd6d6e4dbc110d520513e802f9bbd79558fa6a33b'
 const CLOCK_ID = '0x6'
 const REQUIRED_NETWORK = 'testnet' // Change to 'mainnet' if deployed on mainnet
@@ -47,11 +47,17 @@ function App() {
   const [error, setError] = useState<string>('')
   const [networkWarning, setNetworkWarning] = useState<string>('')
   const [autoCreateTimer, setAutoCreateTimer] = useState<number>(0)
+  const [bombMode, setBombMode] = useState(false)
+  const [shieldMode, setShieldMode] = useState(false)
 
   // Load game info
   useEffect(() => {
     loadGameInfo()
-    const interval = setInterval(loadGameInfo, 5000) // Refresh every 5s
+    loadPixels() // Load pixels on mount
+    const interval = setInterval(() => {
+      loadGameInfo()
+      loadPixels() // Reload pixels every 5s
+    }, 5000)
     return () => clearInterval(interval)
   }, [account?.address]) // Reload when account changes
 
@@ -171,6 +177,13 @@ function App() {
           redTeamPixels: parseInt(fields.red_team_pixels),
           blueTeamPixels: parseInt(fields.blue_team_pixels),
         })
+        
+        console.log('Loaded game info:', {
+          red: parseInt(fields.red_team_pixels),
+          blue: parseInt(fields.blue_team_pixels),
+          total: parseInt(fields.red_team_pixels) + parseInt(fields.blue_team_pixels)
+        })
+        
         setError('') // Clear any previous errors
         
         // Check if current user has joined a team
@@ -225,6 +238,43 @@ function App() {
       })
     }
   }
+
+  const loadPixels = async () => {
+    try {
+      if (MOCK_MODE) return
+
+      // Query PixelPainted events to rebuild pixel state
+      const events = await suiClient.queryEvents({
+        query: {
+          MoveEventType: `${PACKAGE_ID}::pixel_war::PixelPainted`
+        },
+        limit: 2500, // Load up to 2500 pixels (50x50 = 2500 max)
+        order: 'ascending'
+      })
+
+      const newPixels = new Map<string, PixelData>()
+      
+      for (const event of events.data) {
+        if (event.parsedJson) {
+          const data = event.parsedJson as any
+          // Only include pixels from current game
+          if (data.game_id === GAME_ID) {
+            const key = `${data.x},${data.y}`
+            newPixels.set(key, {
+              team: parseInt(data.team),
+              painter: data.painter
+            })
+          }
+        }
+      }
+
+      setPixels(newPixels)
+      console.log(`Loaded ${newPixels.size} pixels from blockchain`)
+    } catch (err) {
+      console.error('Failed to load pixels:', err)
+    }
+  }
+
   const createNewGame = async () => {
     try {
       console.log('Auto-creating new game...')
@@ -414,6 +464,16 @@ function App() {
       return
     }
 
+    // Handle power-up modes
+    if (bombMode) {
+      useBomb(x, y)
+      return
+    }
+    if (shieldMode) {
+      useShield(x, y)
+      return
+    }
+
     // Optimistically update UI first
     const key = `${x},${y}`
     const currentPixel = pixels.get(key)
@@ -582,6 +642,126 @@ function App() {
     }
   }
 
+  const activateBombMode = () => {
+    if (!account || !selectedTeam) {
+      setError('Please join a team first')
+      return
+    }
+    setBombMode(true)
+    setShieldMode(false)
+    setError('💣 Click on a pixel to bomb 3x3 area around it')
+  }
+
+  const activateShieldMode = () => {
+    if (!account || !selectedTeam) {
+      setError('Please join a team first')
+      return
+    }
+    setShieldMode(true)
+    setBombMode(false)
+    setError('🛡️ Click on a pixel to shield it for 1 minute')
+  }
+
+  const useBomb = async (x: number, y: number) => {
+    if (!account) return
+
+    setBombMode(false)
+    setLoading(true)
+
+    try {
+      if (MOCK_MODE) {
+        await new Promise(resolve => setTimeout(resolve, 500))
+        alert(`💣 Bomb exploded at (${x}, ${y})! (Mock Mode)`)
+        setLoading(false)
+        return
+      }
+
+      const tx = new Transaction()
+      const cost = 100_000_000 // 0.1 SUI
+      
+      const [coin] = tx.splitCoins(tx.gas, [cost])
+      
+      tx.moveCall({
+        target: `${PACKAGE_ID}::pixel_war::buy_bomb`,
+        arguments: [
+          tx.object(GAME_ID),
+          coin,
+          tx.pure.u32(x),
+          tx.pure.u32(y),
+          tx.object(CLOCK_ID),
+        ],
+      })
+
+      signAndExecute(
+        { transaction: tx as any },
+        {
+          onSuccess: () => {
+            setLoading(false)
+            alert(`💣 Bomb exploded at (${x}, ${y})!`)
+            loadPixels() // Reload pixels after bomb
+          },
+          onError: (err) => {
+            setLoading(false)
+            setError(`Failed to use bomb: ${err.message}`)
+          },
+        }
+      )
+    } catch (err: any) {
+      setLoading(false)
+      setError(`Error: ${err.message}`)
+    }
+  }
+
+  const useShield = async (x: number, y: number) => {
+    if (!account) return
+
+    setShieldMode(false)
+    setLoading(true)
+
+    try {
+      if (MOCK_MODE) {
+        await new Promise(resolve => setTimeout(resolve, 500))
+        alert(`🛡️ Pixel at (${x}, ${y}) is now shielded! (Mock Mode)`)
+        setLoading(false)
+        return
+      }
+
+      const tx = new Transaction()
+      const cost = 150_000_000 // 0.15 SUI
+      
+      const [coin] = tx.splitCoins(tx.gas, [cost])
+      
+      tx.moveCall({
+        target: `${PACKAGE_ID}::pixel_war::buy_shield`,
+        arguments: [
+          tx.object(GAME_ID),
+          coin,
+          tx.pure.u32(x),
+          tx.pure.u32(y),
+          tx.object(CLOCK_ID),
+        ],
+      })
+
+      signAndExecute(
+        { transaction: tx as any },
+        {
+          onSuccess: () => {
+            setLoading(false)
+            alert(`🛡️ Pixel at (${x}, ${y}) is now shielded!`)
+            loadPixels() // Reload pixels after shield
+          },
+          onError: (err) => {
+            setLoading(false)
+            setError(`Failed to use shield: ${err.message}`)
+          },
+        }
+      )
+    } catch (err: any) {
+      setLoading(false)
+      setError(`Error: ${err.message}`)
+    }
+  }
+
   const claimReward = async () => {
     if (!account) return
 
@@ -608,12 +788,33 @@ function App() {
       signAndExecute(
         { transaction: tx as any },
         {
-          onSuccess: () => {
-            alert('Reward claimed successfully!')
+          onSuccess: (result) => {
+            console.log('Reward claimed:', result)
+            // Try to get the amount from events
+            let rewardAmount = 'your reward'
+            if (result.events) {
+              const claimEvent = result.events.find((e: any) => 
+                e.type?.includes('RewardClaimed')
+              )
+              if (claimEvent && claimEvent.parsedJson) {
+                const amount = parseInt(claimEvent.parsedJson.amount || '0')
+                rewardAmount = (amount / 1_000_000_000).toFixed(4) + ' SUI'
+              }
+            }
+            alert(`💰 Reward claimed successfully! You received ${rewardAmount}!`)
             loadGameInfo()
           },
           onError: (err) => {
-            setError(`Failed to claim reward: ${err.message}`)
+            console.error('Claim error:', err)
+            let errorMsg = err.message
+            if (errorMsg.includes('EAlreadyClaimed') || errorMsg.includes('error code 8')) {
+              errorMsg = 'You have already claimed your reward for this game!'
+            } else if (errorMsg.includes('ENotGameMember') || errorMsg.includes('error code 6')) {
+              errorMsg = 'You did not participate in this game!'
+            } else if (errorMsg.includes('EGameNotEnded') || errorMsg.includes('error code 7')) {
+              errorMsg = 'Game has not ended yet!'
+            }
+            setError(`Failed to claim reward: ${errorMsg}`)
           },
         }
       )
@@ -650,8 +851,9 @@ function App() {
   }
 
   const prizePoolSUI = gameInfo ? (parseInt(gameInfo.prizePool) / 1_000_000_000).toFixed(2) : '0'
-  const redPercentage = gameInfo ? Math.round((gameInfo.redTeamPixels / (gameInfo.redTeamPixels + gameInfo.blueTeamPixels || 1)) * 100) : 0
-  const bluePercentage = gameInfo ? Math.round((gameInfo.blueTeamPixels / (gameInfo.redTeamPixels + gameInfo.blueTeamPixels || 1)) * 100) : 0
+  const totalPixels = gameInfo ? (gameInfo.redTeamPixels + gameInfo.blueTeamPixels) : 0
+  const redPercentage = gameInfo && totalPixels > 0 ? Math.round((gameInfo.redTeamPixels / totalPixels) * 100) : 0
+  const bluePercentage = gameInfo && totalPixels > 0 ? Math.round((gameInfo.blueTeamPixels / totalPixels) * 100) : 0
 
   return (
     <div className="app">
@@ -808,11 +1010,75 @@ function App() {
               </div>
             </div>
             <div style={{ marginTop: '20px', color: '#666' }}>
-              <p>Click on pixels to paint them with your team color!</p>
-              {!gameInfo.isActive && (
-                <button className="btn btn-success" onClick={claimReward} disabled={loading}>
-                  💰 Claim Reward
-                </button>
+              {gameInfo.isActive ? (
+                <p>Click on pixels to paint them with your team color!</p>
+              ) : (
+                <div style={{ marginTop: '20px' }}>
+                  {(() => {
+                    const winnerTeam = gameInfo.redTeamPixels > gameInfo.blueTeamPixels ? TEAM_RED : 
+                                      gameInfo.blueTeamPixels > gameInfo.redTeamPixels ? TEAM_BLUE : 0
+                    const isWinner = selectedTeam && (winnerTeam === 0 || selectedTeam === winnerTeam)
+                    
+                    return (
+                      <div style={{ textAlign: 'center' }}>
+                        <div style={{ 
+                          fontSize: '2rem', 
+                          fontWeight: 'bold', 
+                          marginBottom: '15px',
+                          color: winnerTeam === TEAM_RED ? '#ef4444' : winnerTeam === TEAM_BLUE ? '#0ea5e9' : '#fbbf24'
+                        }}>
+                          {winnerTeam === TEAM_RED && '🔴 Red Team Wins!'}
+                          {winnerTeam === TEAM_BLUE && '🔵 Blue Team Wins!'}
+                          {winnerTeam === 0 && '🤝 It\'s a Tie!'}
+                        </div>
+                        <div style={{ fontSize: '1.2rem', marginBottom: '15px', opacity: 0.8 }}>
+                          Final Score: 🔴 {gameInfo.redTeamPixels} - {gameInfo.blueTeamPixels} 🔵
+                        </div>
+                        {selectedTeam ? (
+                          isWinner ? (
+                            <div>
+                              <div style={{ 
+                                background: 'rgba(16, 185, 129, 0.2)', 
+                                border: '2px solid #10b981',
+                                borderRadius: '10px',
+                                padding: '15px',
+                                marginBottom: '15px',
+                                fontSize: '1.1rem'
+                              }}>
+                                ✅ You are in the winning team! Claim your share of {prizePoolSUI} SUI prize pool!
+                              </div>
+                              <button className="btn btn-success" onClick={claimReward} disabled={loading}>
+                                {loading ? '⏳ Claiming...' : '💰 Claim Reward'}
+                              </button>
+                            </div>
+                          ) : (
+                            <div style={{ 
+                              background: 'rgba(239, 68, 68, 0.2)', 
+                              border: '2px solid #ef4444',
+                              borderRadius: '10px',
+                              padding: '15px',
+                              fontSize: '1.1rem',
+                              color: '#fca5a5'
+                            }}>
+                              ❌ Your team lost. Better luck next game!
+                            </div>
+                          )
+                        ) : (
+                          <div style={{ 
+                            background: 'rgba(148, 163, 184, 0.2)', 
+                            border: '2px solid #94a3b8',
+                            borderRadius: '10px',
+                            padding: '15px',
+                            fontSize: '1rem',
+                            opacity: 0.7
+                          }}>
+                            You didn't participate in this game.
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })()}
+                </div>
               )}
             </div>
           </div>
@@ -835,25 +1101,43 @@ function App() {
 
               <button
                 className="powerup-btn"
-                disabled={!selectedTeam || loading}
+                onClick={activateBombMode}
+                disabled={!selectedTeam || loading || bombMode}
+                style={bombMode ? { background: '#ff6b6b', borderColor: '#ff6b6b' } : {}}
               >
                 <div className="powerup-info">
                   <span className="powerup-name">💣 Bomb</span>
-                  <span className="powerup-desc">Erase 3x3 area</span>
+                  <span className="powerup-desc">{bombMode ? 'Click pixel to bomb!' : 'Erase 3x3 area'}</span>
                 </div>
                 <span className="powerup-cost">0.1 SUI</span>
               </button>
 
               <button
                 className="powerup-btn"
-                disabled={!selectedTeam || loading}
+                onClick={activateShieldMode}
+                disabled={!selectedTeam || loading || shieldMode}
+                style={shieldMode ? { background: '#4caf50', borderColor: '#4caf50' } : {}}
               >
                 <div className="powerup-info">
                   <span className="powerup-name">🛡️ Shield</span>
-                  <span className="powerup-desc">Protect pixels</span>
+                  <span className="powerup-desc">{shieldMode ? 'Click pixel to shield!' : 'Protect pixels'}</span>
                 </div>
                 <span className="powerup-cost">0.15 SUI</span>
               </button>
+
+              {(bombMode || shieldMode) && (
+                <button
+                  className="btn"
+                  onClick={() => {
+                    setBombMode(false)
+                    setShieldMode(false)
+                    setError('')
+                  }}
+                  style={{ marginTop: '10px', background: '#666' }}
+                >
+                  ❌ Cancel
+                </button>
+              )}
             </div>
 
             <h2 style={{ marginTop: '30px' }}>📖 How to Play</h2>
