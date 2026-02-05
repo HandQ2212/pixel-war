@@ -6,9 +6,9 @@ import './App.css'
 // Replace with your deployed package ID and game object ID
 // Set MOCK_MODE = true to test UI without deployment
 const MOCK_MODE = false
-const PACKAGE_ID = '0xa4887ed1309c8d82b6be1d0052d564d9cba7d33889cf637837bc5693f5f0e9b0'
-let GAME_ID = '0x96f401fa0ab3802195a15d386c222b7751d3e90298495a80be09ba788030a5e7' // Will be updated automatically
-const ADMIN_CAP_ID = '0x8fd0283fee52aba4a6c34d5cd6d6e4dbc110d520513e802f9bbd79558fa6a33b'
+const PACKAGE_ID = '0x81b40b466a5e5002a9908526b8fb879772aaa63896c3925cce362a070a33c701'
+let GAME_ID = '0x1e931f990e49235f69a61ffa80730e361198986ac08e36b732499229c474c65f' // Will be updated automatically
+const ADMIN_CAP_ID = '0x78a31f0bf7a0d3852bb6b23c3d4ec6b2f1c374a26037bed8f0a14e860a8d4437'
 const CLOCK_ID = '0x6'
 const REQUIRED_NETWORK = 'testnet' // Change to 'mainnet' if deployed on mainnet
 
@@ -41,7 +41,7 @@ function App() {
   const [gameInfo, setGameInfo] = useState<GameInfo | null>(null)
   const [pixels, setPixels] = useState<Map<string, PixelData>>(new Map())
   const [selectedTeam, setSelectedTeam] = useState<number | null>(null)
-  const [stakeAmount, setStakeAmount] = useState('0.1')
+  const [stakeAmount, setStakeAmount] = useState('0.001')
   const [timeRemaining, setTimeRemaining] = useState<string>('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string>('')
@@ -369,8 +369,8 @@ function App() {
     try {
       // Validate stake amount
       const stakeValue = parseFloat(stakeAmount)
-      if (isNaN(stakeValue) || stakeValue < 0.1) {
-        setError('Minimum stake amount is 0.1 SUI')
+      if (isNaN(stakeValue) || stakeValue < 0.001) {
+        setError('Minimum stake amount is 0.001 SUI')
         setLoading(false)
         return
       }
@@ -389,7 +389,7 @@ function App() {
       }
 
       const tx = new Transaction()
-      // Ensure we're sending at least 0.1 SUI (100_000_000 MIST)
+      // Ensure we're sending at least 0.001 SUI (1_000_000 MIST)
       const stakeAmountMist = BigInt(Math.floor(stakeValue * 1_000_000_000))
       
       console.log('Stake amount in SUI:', stakeValue)
@@ -435,7 +435,7 @@ function App() {
             if (err.message.includes('No valid gas coins') || err.message.includes('Insufficient gas')) {
               errorMsg = '❌ Insufficient SUI balance. You need at least ' + (stakeValue + 0.1) + ' SUI (stake + gas fees). Please get SUI from a faucet or exchange.'
             } else if (err.message.includes('EInsufficientStake') || err.message.includes('error code 3')) {
-              errorMsg = 'Insufficient stake amount. Minimum is 0.1 SUI'
+              errorMsg = 'Insufficient stake amount. Minimum is 0.001 SUI'
             } else if (err.message.includes('EAlreadyJoined') || err.message.includes('error code 4')) {
               errorMsg = 'You have already joined this game'
               // If already joined, try to detect which team
@@ -677,7 +677,7 @@ function App() {
       }
 
       const tx = new Transaction()
-      const cost = 100_000_000 // 0.1 SUI
+      const cost = 1_000_000 // 0.001 SUI
       
       const [coin] = tx.splitCoins(tx.gas, [cost])
       
@@ -727,7 +727,7 @@ function App() {
       }
 
       const tx = new Transaction()
-      const cost = 150_000_000 // 0.15 SUI
+      const cost = 1_500_000 // 0.0015 SUI
       
       const [coin] = tx.splitCoins(tx.gas, [cost])
       
@@ -770,7 +770,7 @@ function App() {
       // MOCK MODE: Just show alert
       if (MOCK_MODE) {
         await new Promise(resolve => setTimeout(resolve, 1000))
-        alert('💰 Reward claimed successfully! You won 0.15 SUI! (Mock Mode)')
+        alert('💰 Reward claimed successfully! You won 0.0015 SUI! (Mock Mode)')
         setLoading(false)
         return
       }
@@ -790,18 +790,7 @@ function App() {
         {
           onSuccess: (result) => {
             console.log('Reward claimed:', result)
-            // Try to get the amount from events
-            let rewardAmount = 'your reward'
-            if (result.events) {
-              const claimEvent = result.events.find((e: any) => 
-                e.type?.includes('RewardClaimed')
-              )
-              if (claimEvent && claimEvent.parsedJson) {
-                const amount = parseInt(claimEvent.parsedJson.amount || '0')
-                rewardAmount = (amount / 1_000_000_000).toFixed(4) + ' SUI'
-              }
-            }
-            alert(`💰 Reward claimed successfully! You received ${rewardAmount}!`)
+            alert(`💰 Reward claimed successfully! Check your wallet for the rewards!`)
             loadGameInfo()
           },
           onError: (err) => {
@@ -940,14 +929,14 @@ function App() {
                   <label>Stake Amount (SUI)</label>
                   <input
                     type="number"
-                    min="0.1"
-                    step="0.1"
+                    min="0.001"
+                    step="0.001"
                     value={stakeAmount}
                     onChange={(e) => setStakeAmount(e.target.value)}
-                    placeholder="0.1"
+                    placeholder="0.001"
                   />
                   <small style={{ color: '#888', fontSize: '0.85em', marginTop: '5px', display: 'block' }}>
-                    💡 Minimum: 0.1 SUI + gas fees (~0.01 SUI)
+                    💡 Minimum: 0.001 SUI + gas fees (~0.01 SUI)
                   </small>
                 </div>
                 <div className="team-selection">
@@ -1109,7 +1098,7 @@ function App() {
                   <span className="powerup-name">💣 Bomb</span>
                   <span className="powerup-desc">{bombMode ? 'Click pixel to bomb!' : 'Erase 3x3 area'}</span>
                 </div>
-                <span className="powerup-cost">0.1 SUI</span>
+                <span className="powerup-cost">0.001 SUI</span>
               </button>
 
               <button
@@ -1122,7 +1111,7 @@ function App() {
                   <span className="powerup-name">🛡️ Shield</span>
                   <span className="powerup-desc">{shieldMode ? 'Click pixel to shield!' : 'Protect pixels'}</span>
                 </div>
-                <span className="powerup-cost">0.15 SUI</span>
+                <span className="powerup-cost">0.0015 SUI</span>
               </button>
 
               {(bombMode || shieldMode) && (

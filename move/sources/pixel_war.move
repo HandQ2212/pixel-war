@@ -11,12 +11,12 @@ module pixel_war::pixel_war {
     // ====== Constants ======
     const CANVAS_WIDTH: u32 = 50;
     const CANVAS_HEIGHT: u32 = 50;
-    const MIN_STAKE: u64 = 10_000_000; // 0.01 SUI
+    const MIN_STAKE: u64 = 1_000_000; // 0.001 SUI
     const GAME_DURATION_MS: u64 = 600_000; // 10 minutes
     
-    const POWERUP_SPEED_COST: u64 = 5_000_000; // 0.005 SUI
-    const POWERUP_BOMB_COST: u64 = 10_000_000; // 0.01 SUI
-    const POWERUP_SHIELD_COST: u64 = 15_000_000; // 0.015 SUI
+    const POWERUP_SPEED_COST: u64 = 500_000; // 0.0005 SUI
+    const POWERUP_BOMB_COST: u64 = 1_000_000; // 0.001 SUI
+    const POWERUP_SHIELD_COST: u64 = 1_500_000; // 0.0015 SUI
 
     // ====== Error Codes ======
     const EGameNotActive: u64 = 1;
